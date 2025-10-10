@@ -46,15 +46,14 @@ class Model(BaseModel):
     def loss(self, y_true, y_pred):
         return self.loss_fn(y_true, y_pred)
 
-    def forward(self, batch):
-        x, y = batch
-        pred = self.model_layer(x)
-        loss = self.loss(pred, y)
+    def forward(self, x):
+        return self.model_layer(x)
 
-        acc_metric = (torch.argmax(y, dim=-1) == torch.argmax(pred, dim=-1)).sum() / len(pred)
-
-        return loss, {"acc": acc_metric}
-
+    def metric(self, x, y_true):
+        y_pred = self.forward(x)
+        loss = self.loss(y_true, y_pred)
+        acc_metric = (torch.argmax(y_true, dim=-1) == torch.argmax(y_pred, dim=-1)).sum() / len(y_pred)
+        return loss, {"acc": acc_metric, "loss": loss.item()}
 
 if __name__ == '__main__':
     train_config = BaseTrainConfig()

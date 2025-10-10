@@ -15,11 +15,8 @@ class BaseDataset:
 
         self.dataset: data.TensorDataset | data.Dataset = self.load_dataset_from_func(self.config.load_dataset_func)
 
-        self.train_dataset, self.valid_dataset = data.random_split(
-            self.dataset,
-            lengths=[1 - self.config.valid_ratio, self.config.valid_ratio],
-            generator=self.seed_generator
-        )
+        self.train_dataset, self.valid_dataset = self.split_train_valid_dataset()
+        self.test_dataset = self.get_test_dataset()
 
         self.train_dataloader = data.DataLoader(
             self.train_dataset,
@@ -31,6 +28,22 @@ class BaseDataset:
             batch_size=self.config.batch_size,
             shuffle=False,
         )
+
+        self.test_dataloader = data.DataLoader(
+            self.test_dataset,
+            batch_size=self.config.batch_size,
+            shuffle=False,
+        ) if self.test_dataset else None
+
+    def split_train_valid_dataset(self):
+        return data.random_split(
+            self.dataset,
+            lengths=[1 - self.config.valid_ratio, self.config.valid_ratio],
+            generator=self.seed_generator
+        )
+
+    def get_test_dataset(self):
+        pass
 
     def get_train_len(self):
         return len(self.dataset) * (1 - self.config.valid_ratio)

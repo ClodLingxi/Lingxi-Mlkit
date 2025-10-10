@@ -23,7 +23,7 @@ class BaseTrainer:
         self.dataset = dataset
         self._set_seed(train_config.seed)
 
-        self.model = None
+        self.model: BaseModel = None
         self.optimizer = None
         self.scheduler = None
 
@@ -56,6 +56,25 @@ class BaseTrainer:
         swanlab.finish()
 
 
+    def test(self):
+        test_loader = self.dataset.test_dataloader
+
+        if self.model is None:
+            raise RuntimeError("Model Not Loaded")
+
+        if test_loader is None:
+            Warning("Test Dataloader was None")
+            return
+
+        y_pred_result: list[torch.Tensor] = []
+
+        for x in tqdm(test_loader, desc=f"Test Inference"):
+            self.model.eval()
+            y_pred = self.model.predict(x)
+            y_pred_result.append(y_pred)
+
+        self.test_print(y_pred_result)
+
     def epoch_train(self):
         train_loader = self.dataset.train_dataloader
         valid_loader = self.dataset.valid_dataloader
@@ -65,8 +84,8 @@ class BaseTrainer:
 
             for batch in tqdm(train_loader, desc=f"Training Epoch {epoch}"):
                 self.model.train()
-
-                loss, metric = self.model(batch)
+                x, y = batch
+                loss, metric = self.model.metric(x=x, y_true=y)
                 loss.backward()
                 self.optimizer.step()
                 if self.scheduler is not None:
@@ -86,8 +105,9 @@ class BaseTrainer:
 
             for batch in tqdm(valid_loader, desc=f"Validating Epoch {epoch}"):
                 self.model.eval()
+                x, y = batch
                 with torch.no_grad():
-                    loss, metric = self.model.predict(batch)
+                    loss, metric = self.model.metric(x=x, y_true=y)
 
                 self.swanlab_log(metric, tag="valid")
                 for metric_name, metric in metric.items():
@@ -109,8 +129,9 @@ class BaseTrainer:
             self.scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
 
 
-    def test_print(self):
-        test_loader = self.dataset.test_dataloader
+    def test_print(self, test_result):
+        raise RuntimeWarning("test print function is not implemented")
+
 
 
     @staticmethod
