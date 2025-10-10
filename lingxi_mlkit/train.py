@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from pathlib import Path
 import os
 import random
@@ -6,6 +7,7 @@ from typing import Type
 # os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
 import torch
+import numpy as np
 from tqdm import tqdm
 import swanlab
 
@@ -19,7 +21,7 @@ class BaseTrainer:
     def __init__(self, dataset: BaseDataset, train_config: BaseTrainConfig):
         self.train_config = train_config
         self.dataset = dataset
-        self.set_seed(train_config.seed)
+        self._set_seed(train_config.seed)
 
         self.model = None
         self.optimizer = None
@@ -59,6 +61,8 @@ class BaseTrainer:
         valid_loader = self.dataset.valid_dataloader
 
         for epoch in range(self.train_config.epochs):
+            epoch_metric_train = {}
+
             for batch in tqdm(train_loader, desc=f"Training Epoch {epoch}"):
                 self.model.train()
 
@@ -69,13 +73,29 @@ class BaseTrainer:
                     self.scheduler.step()
                 self.optimizer.zero_grad()
 
-                self.swanlab_log(metric | {"loss": loss.item()}, tag="train")
+                self.swanlab_log(metric, tag="train")
+
+                for metric_name, metric in metric.items():
+                    if metric_name not in epoch_metric_train.keys():
+                        epoch_metric_train[metric_name + "_epoch"] = []
+                    epoch_metric_train[metric_name + "_epoch"].append(metric)
+            self.swanlab_log(epoch_metric_train, tag="train", handle_func={"mean": np.mean})
+
+
+            epoch_metric_valid = {}
 
             for batch in tqdm(valid_loader, desc=f"Validating Epoch {epoch}"):
                 self.model.eval()
                 with torch.no_grad():
                     loss, metric = self.model.predict(batch)
-                    self.swanlab_log(metric | {"loss": loss.item()}, tag="valid")
+
+                self.swanlab_log(metric, tag="valid")
+                for metric_name, metric in metric.items():
+                    if metric_name not in epoch_metric_valid.keys():
+                        epoch_metric_valid[metric_name + "_epoch"] = []
+                    epoch_metric_valid[metric_name + "_epoch"].append(metric)
+
+            self.swanlab_log(epoch_metric_valid, tag="valid", handle_func={"mean": np.mean})
 
 
 
@@ -89,15 +109,24 @@ class BaseTrainer:
             self.scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
 
 
+    def test_print(self):
+        test_loader = self.dataset.test_dataloader
+
+
     @staticmethod
-    def swanlab_log(log_dict: dict, tag=None, **kwargs):
+    def swanlab_log(log_dict: dict, tag=None, handle_func: dict[str, Callable]=None, **kwargs):
+
+        if handle_func is not None:
+            for func_k, func in handle_func.items():
+                log_dict = {k + "_" + func_k: func(v) for k, v in log_dict.items()}
+
         if tag is not None:
-            new_log_dict = {k + "/" + tag: v for k, v in log_dict.items()}
-            log_dict = new_log_dict
+            log_dict = {k + "/" + tag: v for k, v in log_dict.items()}
+
         swanlab.log(data=log_dict, **kwargs)
 
     @staticmethod
-    def set_seed(seed):
+    def _set_seed(seed):
         torch.manual_seed(seed)
         torch.cuda.manual_seed(seed)
         torch.cuda.manual_seed_all(seed)
