@@ -1,6 +1,8 @@
 from os import PathLike
 from typing import Type, Callable, Union
 
+import numpy as np
+
 from torch.optim import AdamW, Optimizer
 from torch.optim.lr_scheduler import SequentialLR, LambdaLR, CosineAnnealingLR
 from torch.utils.data import TensorDataset
@@ -30,6 +32,12 @@ class BaseTrainConfig:
 
         self.load_state_dict_path = None
         self.load_dataset_func: Union[HintTyping.LoadDataSetType, HintTyping.PathType, None] = None
+
+        self.train_metric: dict["str", Union[dict["str", Union[Callable, None]], None]] = {
+            "loss": {
+                "mean": lambda x: np.mean(x),
+            }
+        }
 
         self.enable_scheduler = True
 

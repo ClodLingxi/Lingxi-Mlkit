@@ -95,10 +95,18 @@ class BaseTrainer:
                 self.swanlab_log(metric, tag="train")
 
                 for metric_name, metric in metric.items():
+                    if "!epoch!" in metric_name:
+                        metric_name = metric_name.replace("!epoch!", "")
+
+                    if metric_name not in self.train_config.train_metric.keys():
+                        continue
+
                     if metric_name not in epoch_metric_train.keys():
-                        epoch_metric_train[metric_name + "_epoch"] = []
-                    epoch_metric_train[metric_name + "_epoch"].append(metric)
-            self.swanlab_log(epoch_metric_train, tag="train", handle_func={"mean": np.mean})
+                        epoch_metric_train[metric_name] = []
+                    epoch_metric_train[metric_name].append(metric)
+
+            for metric_name, handle_func in self.train_config.train_metric.items():
+                self.swanlab_log({metric_name: epoch_metric_train[metric_name]}, tag="train", handle_func=handle_func)
 
 
             epoch_metric_valid = {}
@@ -111,12 +119,19 @@ class BaseTrainer:
 
                 self.swanlab_log(metric, tag="valid")
                 for metric_name, metric in metric.items():
+                    if "!epoch!" in metric_name:
+                        metric_name = metric_name.replace("!epoch!", "")
+
+                    if metric_name not in self.train_config.train_metric.keys():
+                        continue
+
                     if metric_name not in epoch_metric_valid.keys():
-                        epoch_metric_valid[metric_name + "_epoch"] = []
-                    epoch_metric_valid[metric_name + "_epoch"].append(metric)
+                        epoch_metric_valid[metric_name] = []
+                    epoch_metric_valid[metric_name].append(metric)
 
-            self.swanlab_log(epoch_metric_valid, tag="valid", handle_func={"mean": np.mean})
 
+            for metric_name, handle_func in self.train_config.train_metric.items():
+                self.swanlab_log({metric_name: epoch_metric_valid[metric_name]}, tag="valid", handle_func=handle_func)
 
 
     def load_state_dict(self, state_dict_path: Path | None):
@@ -142,7 +157,12 @@ class BaseTrainer:
                 log_dict = {k + "_" + func_k: func(v) for k, v in log_dict.items()}
 
         if tag is not None:
-            log_dict = {k + "/" + tag: v for k, v in log_dict.items()}
+            new_log_dict = {}
+            for k, v in log_dict.items():
+                if "!epoch!" in k:
+                    continue
+                new_log_dict[k + "/" + tag] = v
+            log_dict = new_log_dict
 
         swanlab.log(data=log_dict, **kwargs)
 
