@@ -1,4 +1,3 @@
-from collections.abc import Callable
 from typing import Union
 
 import torch
@@ -13,9 +12,9 @@ class BaseDataset:
         self.config = config
         self.seed_generator = torch.Generator().manual_seed(config.seed)
 
-        self.dataset: data.TensorDataset | data.Dataset = self.load_dataset_from_func(self.config.load_dataset_func)
+        self.dataset: dict[str, data.TensorDataset] = self.load_dataset_from_func(self.config.load_dataset_func)
 
-        self.train_dataset, self.valid_dataset = self.split_train_valid_dataset()
+        self.train_dataset, self.valid_dataset = self.get_train_valid_dataset()
         self.test_dataset = self.get_test_dataset()
 
         self.train_dataloader = data.DataLoader(
@@ -35,29 +34,31 @@ class BaseDataset:
             shuffle=False,
         ) if self.test_dataset else None
 
-    def split_train_valid_dataset(self):
+    def get_train_valid_dataset(self):
+        dataset = self.dataset['train']
         return data.random_split(
-            self.dataset,
+            dataset,
             lengths=[1 - self.config.valid_ratio, self.config.valid_ratio],
             generator=self.seed_generator
         )
 
     def get_test_dataset(self):
-        pass
+        return self.dataset.get("test", None)
 
     def get_train_len(self):
-        return len(self.dataset) * (1 - self.config.valid_ratio)
+        return len(self.dataset['train']) * (1 - self.config.valid_ratio)
 
     def get_valid_len(self):
-        return len(self.dataset) * self.config.valid_ratio
+        return len(self.dataset['train']) * self.config.valid_ratio
 
     @staticmethod
     def load_dataset_from_func(
             func: Union[Ht.LoadDataSetType, Ht.PathType, None]=None
-        ) -> Union[data.TensorDataset, Callable]:
-        if callable(func):
-            return func()
-        elif func is not None:
-            return data.TensorDataset(*torch.load(func))
+        ) -> dict[str, data.TensorDataset]:
+        if func is None:
+            return {
+                "train": data.TensorDataset(),
+                "test": None
+            }
 
-        raise ValueError("None Loader")
+        return func()
