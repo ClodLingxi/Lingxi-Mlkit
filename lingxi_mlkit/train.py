@@ -32,11 +32,12 @@ class BaseTrainer:
             model: Type[BaseModel] = None, model_config=BaseModelConfig(),
             project_name="ExpProject", experiment_name="BaseExp",
     ):
-        swanlab.init(
-            project_name=project_name,
-            experiment_name=experiment_name,
-            config=self.train_config.__dict__ | model_config.__dict__
-        )
+        if self.train_config.enable_swanlab:
+            swanlab.init(
+                project_name=project_name,
+                experiment_name=experiment_name,
+                config=self.train_config.__dict__ | model_config.__dict__
+            )
 
         self.model = model(model_config)
 
@@ -53,7 +54,8 @@ class BaseTrainer:
 
         self.epoch_train()
 
-        swanlab.finish()
+        if self.train_config.enable_swanlab:
+            swanlab.finish()
 
 
     def test(self):
@@ -82,7 +84,7 @@ class BaseTrainer:
         for epoch in range(self.train_config.epochs):
             epoch_metric_train = {}
 
-            for batch in tqdm(train_loader, desc=f"Training Epoch {epoch}"):
+            for batch in tqdm(train_loader, desc=f"Training Epoch {epoch}", disable=not self.train_config.enable_tqdm):
                 self.model.train()
                 x, y = batch
                 loss, metric = self.model.metric(x=x, y_true=y)
@@ -111,7 +113,7 @@ class BaseTrainer:
 
             epoch_metric_valid = {}
 
-            for batch in tqdm(valid_loader, desc=f"Validating Epoch {epoch}"):
+            for batch in tqdm(valid_loader, desc=f"Validating Epoch {epoch}", disable=not self.train_config.enable_tqdm):
                 self.model.eval()
                 x, y = batch
                 with torch.no_grad():
@@ -148,9 +150,11 @@ class BaseTrainer:
         raise RuntimeWarning("test print function is not implemented")
 
 
+    def swanlab_log(self, log_dict: dict, tag=None, handle_func: dict[str, Callable]=None, **kwargs):
+        if not self.train_config.enable_swanlab:
+            return
 
-    @staticmethod
-    def swanlab_log(log_dict: dict, tag=None, handle_func: dict[str, Callable]=None, **kwargs):
+
 
         if handle_func is not None:
             for func_k, func in handle_func.items():
@@ -164,7 +168,7 @@ class BaseTrainer:
                 new_log_dict[k + "/" + tag] = v
             log_dict = new_log_dict
 
-        swanlab.log(data=log_dict, **kwargs)
+        swanlab.log(data=log_dict, print_to_console=self.train_config.print_local, **kwargs)
 
     @staticmethod
     def _set_seed(seed):

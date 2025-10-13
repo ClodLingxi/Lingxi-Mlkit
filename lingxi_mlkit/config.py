@@ -40,6 +40,10 @@ class BaseTrainConfig:
         }
 
         self.enable_scheduler = True
+        self.enable_swanlab = True
+        self.enable_tqdm = True
+
+        self.print_local = False
 
     @staticmethod
     def get_scheduler(optimizer: Optimizer, num_warmup_step: int, max_step: int, min_lr = 1e-5):
