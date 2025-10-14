@@ -27,6 +27,16 @@ class BaseTrainer:
         self.optimizer = None
         self.scheduler = None
 
+    def _init_trainer(self, model, model_config):
+        self.model = model(model_config)
+        self.optimizer = self.train_config.optimizer(self.model.parameters(), lr=self.train_config.learning_rate)
+        self.scheduler = self.train_config.get_scheduler(
+            optimizer=self.optimizer,
+            num_warmup_step=self.dataset.get_train_len() * self.train_config.warmup_epochs,
+            max_step=self.dataset.get_train_len() * self.train_config.epochs
+        ) if self.train_config.enable_scheduler else None
+        self.load_state_dict(self.train_config.load_state_dict_path)
+
     def train(
             self,
             model: Type[BaseModel] = None, model_config=BaseModelConfig(),
@@ -39,20 +49,12 @@ class BaseTrainer:
                 config=self.train_config.__dict__ | model_config.__dict__
             )
 
-        self.model = model(model_config)
-
+        self._init_trainer(model, model_config)
         print(self.model)
 
-        self.optimizer = self.train_config.optimizer(self.model.parameters(), lr=self.train_config.learning_rate)
-        self.scheduler = self.train_config.get_scheduler(
-            optimizer=self.optimizer,
-            num_warmup_step=self.dataset.get_train_len() * self.train_config.warmup_epochs,
-            max_step=self.dataset.get_train_len() * self.train_config.epochs
-        ) if self.train_config.enable_scheduler else None
-
-        self.load_state_dict(self.train_config.load_state_dict_path)
-
-        self.epoch_train()
+        for epoch in range(self.train_config.epochs):
+            self.one_epoch(self.dataset.train_dataloader, no_grad=False, epoch=epoch)
+            self.one_epoch(self.dataset.valid_dataloader, no_grad=True, epoch=epoch)
 
         if self.train_config.enable_swanlab:
             swanlab.finish()
@@ -77,63 +79,48 @@ class BaseTrainer:
 
         self.test_print(y_pred_result)
 
-    def epoch_train(self):
-        train_loader = self.dataset.train_dataloader
-        valid_loader = self.dataset.valid_dataloader
+    def one_epoch(self, dataloader, no_grad=False, epoch=-1):
+        torch.set_grad_enabled(not no_grad)
+        tag = "Train" if not no_grad else "Valid"
 
-        for epoch in range(self.train_config.epochs):
-            epoch_metric_train = {}
+        epoch_metric = {}
 
-            for batch in tqdm(train_loader, desc=f"Training Epoch {epoch}", disable=not self.train_config.enable_tqdm):
+        for batch in tqdm(
+                dataloader,
+                desc=f"{tag} Epoch {epoch}",
+                disable=not self.train_config.enable_tqdm
+        ):
+            if no_grad:
+                self.model.eval()
+            else:
                 self.model.train()
-                x, y = batch
-                loss, metric = self.model.metric(x=x, y_true=y)
+
+
+            x, y = batch
+            loss, metric = self.model.metric(x=x, y_true=y)
+
+            if not no_grad:
                 loss.backward()
                 self.optimizer.step()
                 if self.scheduler is not None:
                     self.scheduler.step()
                 self.optimizer.zero_grad()
 
-                self.swanlab_log(metric, tag="train")
+            self.swanlab_log(metric, tag=tag)
 
-                for metric_name, metric in metric.items():
-                    if "!epoch!" in metric_name:
-                        metric_name = metric_name.replace("!epoch!", "")
+            for metric_name, metric in metric.items():
+                if "!epoch!" in metric_name:
+                    metric_name = metric_name.replace("!epoch!", "")
 
-                    if metric_name not in self.train_config.train_metric.keys():
-                        continue
+                if metric_name not in self.train_config.train_metric.keys():
+                    continue
 
-                    if metric_name not in epoch_metric_train.keys():
-                        epoch_metric_train[metric_name] = []
-                    epoch_metric_train[metric_name].append(metric)
+                if metric_name not in epoch_metric.keys():
+                    epoch_metric[metric_name] = []
+                epoch_metric[metric_name].append(metric)
 
-            for metric_name, handle_func in self.train_config.train_metric.items():
-                self.swanlab_log({metric_name: epoch_metric_train[metric_name]}, tag="train", handle_func=handle_func)
-
-
-            epoch_metric_valid = {}
-
-            for batch in tqdm(valid_loader, desc=f"Validating Epoch {epoch}", disable=not self.train_config.enable_tqdm):
-                self.model.eval()
-                x, y = batch
-                with torch.no_grad():
-                    loss, metric = self.model.metric(x=x, y_true=y)
-
-                self.swanlab_log(metric, tag="valid")
-                for metric_name, metric in metric.items():
-                    if "!epoch!" in metric_name:
-                        metric_name = metric_name.replace("!epoch!", "")
-
-                    if metric_name not in self.train_config.train_metric.keys():
-                        continue
-
-                    if metric_name not in epoch_metric_valid.keys():
-                        epoch_metric_valid[metric_name] = []
-                    epoch_metric_valid[metric_name].append(metric)
-
-
-            for metric_name, handle_func in self.train_config.train_metric.items():
-                self.swanlab_log({metric_name: epoch_metric_valid[metric_name]}, tag="valid", handle_func=handle_func)
+        for metric_name, handle_func in self.train_config.train_metric.items():
+            self.swanlab_log({metric_name: epoch_metric[metric_name]}, tag=tag, handle_func=handle_func)
 
 
     def load_state_dict(self, state_dict_path: Path | None):
