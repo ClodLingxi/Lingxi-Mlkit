@@ -29,7 +29,7 @@ class BaseTrainer:
 
     def _init_trainer(self, model, model_config):
         self.model = model(model_config)
-        self.optimizer = self.train_config.optimizer(self.model.parameters(), lr=self.train_config.learning_rate)
+        self.optimizer = self.train_config.optimizer(self.model.parameters(), **self.train_config.optimizer_params)
         self.scheduler = self.train_config.get_scheduler(
             optimizer=self.optimizer,
             num_warmup_step=self.dataset.get_train_len() * self.train_config.warmup_epochs,

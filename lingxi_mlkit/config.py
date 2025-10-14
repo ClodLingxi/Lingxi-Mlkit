@@ -21,6 +21,7 @@ class BaseTrainConfig:
         self.learning_rate = 1e-3
         self.weight_decay = 1e-3
         self.optimizer: Type[Optimizer] = AdamW
+        self.optimizer_params = {"lr": self.learning_rate, "weight_decay": self.weight_decay}
 
         self.warmup_epochs = 1
 
