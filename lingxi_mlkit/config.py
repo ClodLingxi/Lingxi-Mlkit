@@ -1,16 +1,18 @@
 from os import PathLike
-from typing import Type, Callable, Union
+from typing import Type, Callable, Union, TypedDict, Optional, Any
 
 import numpy as np
-
 from torch.optim import AdamW, Optimizer
 from torch.optim.lr_scheduler import SequentialLR, LambdaLR, CosineAnnealingLR
-from torch.utils.data import TensorDataset
+from torch.utils.data import Dataset
 
 
 class HintTyping:
     PathType = Union[str, bytes, PathLike]
-    LoadDataSetType = Callable[[], TensorDataset]
+    class DatasetTye(TypedDict, total=False):
+        train: Dataset[Any]
+        test: Optional[Dataset[Any]]
+        valid: Optional[Dataset[Any]]
 
 
 class BaseTrainConfig:
@@ -32,7 +34,7 @@ class BaseTrainConfig:
         self.valid_ratio = 0.1
 
         self.load_state_dict_path = None
-        self.load_dataset_func: Union[HintTyping.LoadDataSetType, HintTyping.PathType, None] = None
+        self.load_dataset_func: Callable[[], HintTyping.DatasetTye] | None = None
 
         self.train_metric: dict["str", Union[dict["str", Union[Callable, None]], None]] = {
             "loss": {
@@ -72,5 +74,3 @@ class BaseModelConfig:
     def __init__(self):
         super().__init__()
         pass
-
-# Validation True Rate 0.09172478
