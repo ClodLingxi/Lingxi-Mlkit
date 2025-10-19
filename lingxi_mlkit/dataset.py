@@ -55,16 +55,16 @@ class BaseDataset:
     def get_train_len(self):
         dataset = self.dataset['train']
         if not isinstance(dataset, Sized):
-            return -1
+            raise TypeError("Dataset must be of type Sized")
 
         return int(len(dataset) * (1 - self.config.valid_ratio))
 
     def get_valid_len(self):
         dataset = self.dataset['train']
         if not isinstance(dataset, Sized):
-            return -1
+            raise TypeError("Dataset must be of type Sized")
 
-        return len(dataset) * self.config.valid_ratio
+        return int(len(dataset) * self.config.valid_ratio)
 
     @staticmethod
     def load_dataset_from_func(
