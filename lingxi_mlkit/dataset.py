@@ -50,7 +50,7 @@ class BaseDataset:
         return train.dataset, valid.dataset
 
     def get_test_dataset(self):
-        return self.dataset.get("test", None)
+        return self.dataset['test']
 
     def get_train_len(self):
         dataset = self.dataset['train']

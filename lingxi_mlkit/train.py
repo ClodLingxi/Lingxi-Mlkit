@@ -28,7 +28,7 @@ class BaseTrainer:
         self.scheduler = None
 
     def _init_trainer(self, model, model_config):
-        self.model = model(model_config)
+        self.model = model(model_config).to(self.train_config.device)
         self.optimizer = self.train_config.optimizer(self.model.parameters(), **self.train_config.optimizer_params)
         self.scheduler = self.train_config.get_scheduler(
             optimizer=self.optimizer,
@@ -72,7 +72,10 @@ class BaseTrainer:
 
         y_pred_result: list[torch.Tensor] = []
 
-        for x in tqdm(test_loader, desc=f"Test Inference"):
+        for batch in tqdm(test_loader, desc=f"Test Inference", disable=not self.train_config.enable_tqdm):
+            x, = batch
+            x = x.to(self.train_config.device)
+
             self.model.eval()
             y_pred = self.model.predict(x)
             y_pred_result.append(y_pred)
@@ -97,6 +100,7 @@ class BaseTrainer:
 
 
             x, y = batch
+            x, y = x.to(self.train_config.device), y.to(self.train_config.device)
             loss, metric = self.model.metric(x=x, y_true=y)
 
             if not no_grad:
@@ -139,6 +143,8 @@ class BaseTrainer:
 
     def swanlab_log(self, log_dict: dict, tag=None, handle_func: dict[str, Callable]=None, **kwargs):
         if not self.train_config.enable_swanlab:
+            if self.train_config.print_local:
+                print(log_dict)
             return
 
 
