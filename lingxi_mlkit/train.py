@@ -9,7 +9,11 @@ from typing import Type
 import torch
 import numpy as np
 from tqdm import tqdm
-import swanlab
+
+try:
+    import swanlab
+except ImportError:
+    swanlab = None
 
 from .config import BaseTrainConfig, BaseModelConfig
 from .dataset import BaseDataset
@@ -26,6 +30,10 @@ class BaseTrainer:
         self.model: BaseModel = None
         self.optimizer = None
         self.scheduler = None
+
+        if self.train_config.enable_swanlab and swanlab is None:
+            Warning("Swanlab is not installed!")
+            self.train_config.enable_swanlab = False
 
     def _init_trainer(self, model, model_config):
         self.model = model(model_config).to(self.train_config.device)
@@ -135,6 +143,17 @@ class BaseTrainer:
         self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         if self.scheduler is not None:
             self.scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+
+
+    def save_state_dict(self, state_dict_path: Path | None):
+        save_dict = {
+            "model_state_dict": self.model.state_dict(),
+            "optimizer_state_dict": self.optimizer.state_dict(),
+        }
+        save_dict = save_dict if self.scheduler is None else save_dict | {
+            "scheduler_state_dict": self.scheduler.state_dict(),
+        }
+        torch.save({save_dict}, state_dict_path)
 
 
     def test_print(self, test_result):
