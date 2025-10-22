@@ -1,13 +1,11 @@
 from collections.abc import Callable
 from pathlib import Path
-import os
 import random
 from typing import Type
 
 # os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
 import torch
-import numpy as np
 from tqdm import tqdm
 
 try:
@@ -153,7 +151,7 @@ class BaseTrainer:
         save_dict = save_dict if self.scheduler is None else save_dict | {
             "scheduler_state_dict": self.scheduler.state_dict(),
         }
-        torch.save({save_dict}, state_dict_path)
+        torch.save(save_dict, state_dict_path)
 
 
     def test_print(self, test_result):
