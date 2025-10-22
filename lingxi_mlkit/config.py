@@ -2,6 +2,7 @@ from os import PathLike
 from typing import Type, Callable, Union, TypedDict, Optional, Any
 
 import numpy as np
+import torch
 from torch.optim import AdamW, Optimizer
 from torch.optim.lr_scheduler import SequentialLR, LambdaLR, CosineAnnealingLR
 from torch.utils.data import Dataset
@@ -16,7 +17,7 @@ class HintTyping:
 
 
 class BaseTrainConfig:
-    def __init__(self, device="cuda"):
+    def __init__(self, device=None):
         self.batch_size = 8
         self.epochs = 10
 
@@ -27,7 +28,7 @@ class BaseTrainConfig:
 
         self.warmup_epochs = 1
 
-        self.device = device
+        self.device = ("cuda" if torch.cuda.is_available() else "cpu") if device is None else device
         self.seed = 666
 
         self.small_train_ratio = 1
