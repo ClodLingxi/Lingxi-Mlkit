@@ -1,37 +1,41 @@
 from os import PathLike
-from typing import Type, Callable, Union
+from typing import Type, Callable, Union, TypedDict, Optional, Any
 
 import numpy as np
-
+import torch
 from torch.optim import AdamW, Optimizer
 from torch.optim.lr_scheduler import SequentialLR, LambdaLR, CosineAnnealingLR
-from torch.utils.data import TensorDataset
+from torch.utils.data import Dataset
 
 
 class HintTyping:
     PathType = Union[str, bytes, PathLike]
-    LoadDataSetType = Callable[[], TensorDataset]
+    class DatasetTye(TypedDict, total=False):
+        train: Dataset[Any]
+        test: Optional[Dataset[Any]]
+        valid: Optional[Dataset[Any]]
 
 
 class BaseTrainConfig:
-    def __init__(self, device="cuda"):
+    def __init__(self, device=None):
         self.batch_size = 8
         self.epochs = 10
 
         self.learning_rate = 1e-3
         self.weight_decay = 1e-3
         self.optimizer: Type[Optimizer] = AdamW
+        self.optimizer_params = {"lr": self.learning_rate, "weight_decay": self.weight_decay}
 
         self.warmup_epochs = 1
 
-        self.device = device
+        self.device = ("cuda" if torch.cuda.is_available() else "cpu") if device is None else device
         self.seed = 666
 
         self.small_train_ratio = 1
         self.valid_ratio = 0.1
 
         self.load_state_dict_path = None
-        self.load_dataset_func: Union[HintTyping.LoadDataSetType, HintTyping.PathType, None] = None
+        self.load_dataset_func: Callable[[], HintTyping.DatasetTye] | None = None
 
         self.train_metric: dict["str", Union[dict["str", Union[Callable, None]], None]] = {
             "loss": {
@@ -41,6 +45,8 @@ class BaseTrainConfig:
 
         self.enable_scheduler = True
         self.enable_swanlab = True
+        self.enable_optuna = False
+
         self.enable_tqdm = True
 
         self.print_local = False
@@ -71,5 +77,3 @@ class BaseModelConfig:
     def __init__(self):
         super().__init__()
         pass
-
-# Validation True Rate 0.09172478

@@ -1,15 +1,17 @@
 from collections.abc import Callable
 from pathlib import Path
-import os
 import random
 from typing import Type
 
 # os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
 import torch
-import numpy as np
 from tqdm import tqdm
-import swanlab
+
+try:
+    import swanlab
+except ImportError:
+    swanlab = None
 
 from .config import BaseTrainConfig, BaseModelConfig
 from .dataset import BaseDataset
@@ -27,21 +29,25 @@ class BaseTrainer:
         self.optimizer = None
         self.scheduler = None
 
+        if self.train_config.enable_swanlab and swanlab is None:
+            Warning("Swanlab is not installed!")
+            self.train_config.enable_swanlab = False
+
     def _init_trainer(self, model, model_config):
-        self.model = model(model_config)
-        self.optimizer = self.train_config.optimizer(self.model.parameters(), lr=self.train_config.learning_rate)
+        self.model = model(model_config).to(self.train_config.device)
+        self.optimizer = self.train_config.optimizer(self.model.parameters(), **self.train_config.optimizer_params)
         self.scheduler = self.train_config.get_scheduler(
             optimizer=self.optimizer,
             num_warmup_step=self.dataset.get_train_len() * self.train_config.warmup_epochs,
             max_step=self.dataset.get_train_len() * self.train_config.epochs
         ) if self.train_config.enable_scheduler else None
-        self.load_state_dict(self.train_config.load_state_dict_path)
+        # self.load_state_dict(self.train_config.load_state_dict_path)
 
     def train(
             self,
             model: Type[BaseModel] = None, model_config=BaseModelConfig(),
             project_name="ExpProject", experiment_name="BaseExp",
-    ):
+    )-> tuple[list[dict], list[dict]]:
         if self.train_config.enable_swanlab:
             swanlab.init(
                 project_name=project_name,
@@ -49,15 +55,24 @@ class BaseTrainer:
                 config=self.train_config.__dict__ | model_config.__dict__
             )
 
-        self._init_trainer(model, model_config)
-        print(self.model)
+        if model is not None:
+            self._init_trainer(model, model_config)
+        # print(self.model)
+
+        train_metric_list = []
+        valid_metric_list = []
 
         for epoch in range(self.train_config.epochs):
-            self.one_epoch(self.dataset.train_dataloader, no_grad=False, epoch=epoch)
-            self.one_epoch(self.dataset.valid_dataloader, no_grad=True, epoch=epoch)
+            train_metric = self.one_epoch(self.dataset.train_dataloader, no_grad=False, epoch=epoch)
+            valid_metric = self.one_epoch(self.dataset.valid_dataloader, no_grad=True, epoch=epoch)
+
+            train_metric_list.append(train_metric)
+            valid_metric_list.append(valid_metric)
 
         if self.train_config.enable_swanlab:
             swanlab.finish()
+
+        return train_metric_list, valid_metric_list
 
 
     def test(self):
@@ -72,7 +87,10 @@ class BaseTrainer:
 
         y_pred_result: list[torch.Tensor] = []
 
-        for x in tqdm(test_loader, desc=f"Test Inference"):
+        for batch in tqdm(test_loader, desc=f"Test Inference", disable=not self.train_config.enable_tqdm):
+            x, = batch
+            x = x.to(self.train_config.device)
+
             self.model.eval()
             y_pred = self.model.predict(x)
             y_pred_result.append(y_pred)
@@ -97,6 +115,7 @@ class BaseTrainer:
 
 
             x, y = batch
+            x, y = x.to(self.train_config.device), y.to(self.train_config.device)
             loss, metric = self.model.metric(x=x, y_true=y)
 
             if not no_grad:
@@ -122,15 +141,33 @@ class BaseTrainer:
         for metric_name, handle_func in self.train_config.train_metric.items():
             self.swanlab_log({metric_name: epoch_metric[metric_name]}, tag=tag, handle_func=handle_func)
 
+        return epoch_metric
 
-    def load_state_dict(self, state_dict_path: Path | None):
+
+    def load_state_dict(self, state_dict_path: Path | None, model: Type[BaseModel] = None, model_config=None):
         if state_dict_path is None:
             return
+        if self.model is None and model is None:
+            raise RuntimeError("Model Not Loaded! Please ")
+
+        self._init_trainer(model, model_config)
+
         checkpoint = torch.load(state_dict_path, map_location=self.train_config.device, weights_only=False)
         self.model.load_state_dict(checkpoint['model_state_dict'])
         self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         if self.scheduler is not None:
             self.scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+
+
+    def save_state_dict(self, state_dict_path: Path | None):
+        save_dict = {
+            "model_state_dict": self.model.state_dict(),
+            "optimizer_state_dict": self.optimizer.state_dict(),
+        }
+        save_dict = save_dict if self.scheduler is None else save_dict | {
+            "scheduler_state_dict": self.scheduler.state_dict(),
+        }
+        torch.save(save_dict, state_dict_path)
 
 
     def test_print(self, test_result):
@@ -139,6 +176,8 @@ class BaseTrainer:
 
     def swanlab_log(self, log_dict: dict, tag=None, handle_func: dict[str, Callable]=None, **kwargs):
         if not self.train_config.enable_swanlab:
+            if self.train_config.print_local:
+                print(log_dict)
             return
 
 

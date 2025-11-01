@@ -76,7 +76,7 @@ class Model(BaseModel):
         y_true, y_pred = torch.argmax(y_true, dim=-1), torch.argmax(y_pred, dim=-1)
         acc_metric = (y_true == y_pred).sum() / len(y_pred)
 
-        true_and_pred = np.array((y_true, y_pred))
+        true_and_pred = np.array((y_true.cpu().numpy(), y_pred.cpu().numpy()))
         
         return loss, {"acc": acc_metric, "loss": loss.item(), "y_true_and_y_pred!epoch!": true_and_pred}
 
@@ -91,6 +91,7 @@ if __name__ == '__main__':
     train_config = TrainConfig()
     train_config.load_dataset_func = load_dataset_fn
     train_config.enable_scheduler = False
+    train_config.enable_swanlab = False
 
     train_dataset = BaseDataset(train_config)
 

@@ -1,4 +1,4 @@
-from typing import Union
+from typing import Union, Callable, Sized, Any
 
 import torch
 import torch.utils.data as data
@@ -12,7 +12,7 @@ class BaseDataset:
         self.config = config
         self.seed_generator = torch.Generator().manual_seed(config.seed)
 
-        self.dataset: dict[str, data.TensorDataset] = self.load_dataset_from_func(self.config.load_dataset_func)
+        self.dataset: Ht.DatasetTye = self.load_dataset_from_func(self.config.load_dataset_func)
 
         self.train_dataset, self.valid_dataset = self.get_train_valid_dataset()
         self.test_dataset = self.get_test_dataset()
@@ -36,29 +36,44 @@ class BaseDataset:
 
     def get_train_valid_dataset(self):
         dataset = self.dataset['train']
-        return data.random_split(
+
+        if self.dataset.get("valid", None) is not None:
+            valid_dataset: data.Dataset[Any] = self.dataset["valid"]
+            return dataset, valid_dataset
+
+        train, valid = data.random_split(
             dataset,
             lengths=[1 - self.config.valid_ratio, self.config.valid_ratio],
             generator=self.seed_generator
         )
 
+        return train, valid
+
     def get_test_dataset(self):
         return self.dataset.get("test", None)
 
     def get_train_len(self):
-        return len(self.dataset['train']) * (1 - self.config.valid_ratio)
+        dataset = self.dataset['train']
+        if not isinstance(dataset, Sized):
+            raise TypeError("Dataset must be of type Sized")
+
+        return int(len(dataset) * (1 - self.config.valid_ratio))
 
     def get_valid_len(self):
-        return len(self.dataset['train']) * self.config.valid_ratio
+        dataset = self.dataset.get("valid", object())
+        if not isinstance(dataset, Sized):
+            raise TypeError("Dataset must be of type Sized")
+
+        return int(len(dataset) * self.config.valid_ratio)
 
     @staticmethod
     def load_dataset_from_func(
-            func: Union[Ht.LoadDataSetType, Ht.PathType, None]=None
-        ) -> dict[str, data.TensorDataset]:
+            func: Union[Callable[[], Ht.DatasetTye], None]=None
+        ) -> Ht.DatasetTye:
         if func is None:
             return {
                 "train": data.TensorDataset(),
-                "test": None
+                "valid": data.TensorDataset(),
             }
 
         return func()
