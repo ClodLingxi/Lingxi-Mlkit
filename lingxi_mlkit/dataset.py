@@ -37,7 +37,7 @@ class BaseDataset:
     def get_train_valid_dataset(self):
         dataset = self.dataset['train']
 
-        if self.dataset["valid"] is not None:
+        if self.dataset.get("valid", None) is not None:
             valid_dataset: data.Dataset[Any] = self.dataset["valid"]
             return dataset, valid_dataset
 
@@ -47,10 +47,10 @@ class BaseDataset:
             generator=self.seed_generator
         )
 
-        return train.dataset, valid.dataset
+        return train, valid
 
     def get_test_dataset(self):
-        return self.dataset['test']
+        return self.dataset.get("test", None)
 
     def get_train_len(self):
         dataset = self.dataset['train']
@@ -60,7 +60,7 @@ class BaseDataset:
         return int(len(dataset) * (1 - self.config.valid_ratio))
 
     def get_valid_len(self):
-        dataset = self.dataset['train']
+        dataset = self.dataset.get("valid", object())
         if not isinstance(dataset, Sized):
             raise TypeError("Dataset must be of type Sized")
 

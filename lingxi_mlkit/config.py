@@ -45,6 +45,8 @@ class BaseTrainConfig:
 
         self.enable_scheduler = True
         self.enable_swanlab = True
+        self.enable_optuna = False
+
         self.enable_tqdm = True
 
         self.print_local = False

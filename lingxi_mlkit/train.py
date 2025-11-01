@@ -41,13 +41,13 @@ class BaseTrainer:
             num_warmup_step=self.dataset.get_train_len() * self.train_config.warmup_epochs,
             max_step=self.dataset.get_train_len() * self.train_config.epochs
         ) if self.train_config.enable_scheduler else None
-        self.load_state_dict(self.train_config.load_state_dict_path)
+        # self.load_state_dict(self.train_config.load_state_dict_path)
 
     def train(
             self,
             model: Type[BaseModel] = None, model_config=BaseModelConfig(),
             project_name="ExpProject", experiment_name="BaseExp",
-    ):
+    )-> tuple[list[dict], list[dict]]:
         if self.train_config.enable_swanlab:
             swanlab.init(
                 project_name=project_name,
@@ -55,15 +55,24 @@ class BaseTrainer:
                 config=self.train_config.__dict__ | model_config.__dict__
             )
 
-        self._init_trainer(model, model_config)
-        print(self.model)
+        if model is not None:
+            self._init_trainer(model, model_config)
+        # print(self.model)
+
+        train_metric_list = []
+        valid_metric_list = []
 
         for epoch in range(self.train_config.epochs):
-            self.one_epoch(self.dataset.train_dataloader, no_grad=False, epoch=epoch)
-            self.one_epoch(self.dataset.valid_dataloader, no_grad=True, epoch=epoch)
+            train_metric = self.one_epoch(self.dataset.train_dataloader, no_grad=False, epoch=epoch)
+            valid_metric = self.one_epoch(self.dataset.valid_dataloader, no_grad=True, epoch=epoch)
+
+            train_metric_list.append(train_metric)
+            valid_metric_list.append(valid_metric)
 
         if self.train_config.enable_swanlab:
             swanlab.finish()
+
+        return train_metric_list, valid_metric_list
 
 
     def test(self):
@@ -132,10 +141,17 @@ class BaseTrainer:
         for metric_name, handle_func in self.train_config.train_metric.items():
             self.swanlab_log({metric_name: epoch_metric[metric_name]}, tag=tag, handle_func=handle_func)
 
+        return epoch_metric
 
-    def load_state_dict(self, state_dict_path: Path | None):
+
+    def load_state_dict(self, state_dict_path: Path | None, model: Type[BaseModel] = None, model_config=None):
         if state_dict_path is None:
             return
+        if self.model is None and model is None:
+            raise RuntimeError("Model Not Loaded! Please ")
+
+        self._init_trainer(model, model_config)
+
         checkpoint = torch.load(state_dict_path, map_location=self.train_config.device, weights_only=False)
         self.model.load_state_dict(checkpoint['model_state_dict'])
         self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
